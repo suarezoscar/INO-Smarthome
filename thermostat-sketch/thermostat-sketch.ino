@@ -2,6 +2,20 @@
 #include <Ethernet.h>
 #include <ArduinoJson.h>
 
+// Temperature sensor libraries
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Data wire is plugged into pin 2 on the Arduino
+#define ONE_WIRE_BUS 2
+
+// Setup a oneWire instance to communicate with any OneWire devices
+// (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature.
+DallasTemperature sensors(&oneWire);
+
 // assign a MAC address for the ethernet controller.
 byte mac[] = {0x3A, 0x59, 0xE1, 0x0F, 0xAB, 0x1B};
 
@@ -10,17 +24,18 @@ IPAddress ip(192, 168, 31, 100);
 IPAddress myDns(192, 168, 31, 1);
 IPAddress server(192, 168, 31, 140);
 
-
 // initialize the library instance:
 EthernetClient client;
 
-unsigned long lastConnectionTime = 0;            // last time you connected to the server, in milliseconds
-const unsigned long postingInterval = 10 * 1000; // delay between updates, in milliseconds
+unsigned long lastConnectionTime = 0;        // last time you connected to the server, in milliseconds
+const unsigned long getInterval = 10 * 1000; // delay between updates, in milliseconds
+
+const unsigned long putInterval = 10 * 1000; // delay between updates, in milliseconds
 
 //Declare global variables
-boolean isActive ;
+boolean isActive;
 double currentTemp;
-double triggerTemp ;
+double triggerTemp;
 
 void setup()
 {
@@ -31,6 +46,10 @@ void setup()
   {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+
+  Serial.println("Dallas Temperature IC Control Library");
+  // Start up the library
+  sensors.begin();
 
   // sets the pin as output
   pinMode(7, OUTPUT);
@@ -70,29 +89,29 @@ void setup()
 
 void readJson()
 {
-
   // Allocate memory for Json buffer
   StaticJsonBuffer<512> jsonBuffer;
-
-  JsonObject& root = jsonBuffer.parse(client);
+  JsonObject &root = jsonBuffer.parse(client);
 
   if (!root.success())
-  {    
+  {
     return;
   }
 
   boolean newStatus = root["isActive"].as<bool>();
 
-  if (newStatus != isActive) {
-
+  if (newStatus != isActive)
+  {
     isActive = newStatus;
 
-    if (isActive) {
+    if (isActive)
+    {
       Serial.println("Thermostat set to ON");
       digitalWrite(7, HIGH);
       delay(1000);
-
-    } else {
+    }
+    else
+    {
       Serial.println("Thermostat set to OFF");
       digitalWrite(7, LOW);
       delay(1000);
@@ -105,54 +124,88 @@ void readJson()
   Serial.println(isActive);
   Serial.println(currentTemp);
   Serial.println(triggerTemp);
+}
 
-
+double requestTemperature()
+{
+  Serial.print(" Requesting temperatures...");
+  sensors.requestTemperatures();
+  double temperature = sensors.getTempCByIndex(0);
+  Serial.print("Temperature is: ");
+  Serial.print(temperature);
+  Serial.println("");
+  return temperature;
+  delay(1000);
 }
 
 void loop()
 {
-  // if there's incoming data from the net connection.
-  // send it out the serial port.  This is for debugging
-  // purposes only:
-  if (client.available())
-  {
-    readJson();
-  }
-
   // if ten seconds have passed since your last connection,
-  // then connect again and send data:
-  if (millis() - lastConnectionTime > postingInterval)
+  if (millis() - lastConnectionTime > getInterval)
   {
     httpRequest();
   }
 }
 
-// this method makes a HTTP connection to the server:
-void httpRequest()
+void getThermostatInfo()
 {
-  // close any connection before send a new request.
-  // This will free the socket on the WiFi shield
-  client.stop();
-  delay(1000);
-
-  // if there's a successful connection:
   if (client.connect(server, 3000))
   {
-    Serial.println("connecting...");
-    // send the HTTP GET request:
+    Serial.println("GET REQUEST connecting...");
+
     client.println("GET /v1/thermostat/ HTTP/1.1");
     client.println("Host: http://192.168.31.140");
     client.println("User-Agent: arduino-ethernet");
     client.println("Connection: close");
     client.println("");
 
-    // note the time that the connection was made:
-    lastConnectionTime = millis();
+    while (client.available())
+    {
+      readJson();
+    }
+
+    Serial.println();
+    Serial.println("closing GET connection");
+    client.stop();
   }
-  else
+}
+
+void putCurrentTemp(double tmp)
+{
+  if (client.connect(server, 3000))
   {
-    // if you couldn't make a connection:
-    Serial.println("connection failed");
-    delay(5000);
+    Serial.println("PUT REQUEST current temp " + String(tmp, 2));
+
+    client.println("PUT /v1/thermostat/current/" + String(tmp, 2) + "/ HTTP/1.1");
+    client.println("Host: http://192.168.31.140");
+    client.println("Connection: close");
+    client.println("Content-Type: application/x-www-form-urlencoded");
+    client.println("Content-Length: 10\r\n");
+    client.print(String(tmp, 2));
+    client.println("");
+    delay(10);
+
+    // Read all the lines of the reply from server and print them to Serial
+    while (client.available())
+    {
+      String line = client.readStringUntil('\r');
+      Serial.print(line);
+    }
+
+    Serial.println();
+    Serial.println("closing PUT connection");
+    client.stop();
   }
+}
+
+//CALL ALL HTTP REQUESTS METHODS
+void httpRequest()
+{
+  getThermostatInfo();
+
+  delay(5000); //wait five seconds before next request
+
+  putCurrentTemp(requestTemperature());
+
+  lastConnectionTime = millis();
 }
