@@ -22,7 +22,8 @@ byte mac[] = {0x3A, 0x59, 0xE1, 0x0F, 0xAB, 0x1B};
 // Set the static IP address to use if the DHCP fails to assign
 IPAddress ip(192, 168, 31, 100);
 IPAddress myDns(192, 168, 31, 1);
-IPAddress server(192, 168, 31, 140);
+// IPAddress server(192, 168, 31, 140);
+char serverName[] = "http://smart-home-be.herokuapp.com";
 
 // initialize the library instance:
 EthernetClient client;
@@ -149,12 +150,12 @@ void loop()
 
 void getThermostatInfo()
 {
-  if (client.connect(server, 3000))
+  if (client.connect(serverName, 80))
   {
     Serial.println("GET REQUEST connecting...");
 
     client.println("GET /v1/thermostat/ HTTP/1.1");
-    client.println("Host: http://192.168.31.140");
+    client.println("Host: http://smart-home-be.herokuapp.com");
     client.println("User-Agent: arduino-ethernet");
     client.println("Connection: close");
     client.println("");
@@ -172,12 +173,12 @@ void getThermostatInfo()
 
 void putCurrentTemp(double tmp)
 {
-  if (client.connect(server, 3000))
+  if (client.connect(serverName, 80))
   {
     Serial.println("PUT REQUEST current temp " + String(tmp, 2));
 
     client.println("PUT /v1/thermostat/current/" + String(tmp, 2) + "/ HTTP/1.1");
-    client.println("Host: http://192.168.31.140");
+    client.println("Host: http://smart-home-be.herokuapp.com");
     client.println("Connection: close");
     client.println("Content-Type: application/x-www-form-urlencoded");
     client.println("Content-Length: 10\r\n");
