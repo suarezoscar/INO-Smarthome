@@ -23,14 +23,12 @@ byte mac[] = {0x3A, 0x59, 0xE1, 0x0F, 0xAB, 0x1B};
 IPAddress ip(192, 168, 31, 100);
 IPAddress myDns(192, 168, 31, 1);
 // IPAddress server(192, 168, 31, 140);
-char serverName[] = "http://smart-home-be.herokuapp.com";
+char serverName[] = "smart-home-be.herokuapp.com";
 
 // initialize the library instance:
 EthernetClient client;
 
-unsigned long lastConnectionTime = 0;        // last time you connected to the server, in milliseconds
 const unsigned long getInterval = 10 * 1000; // delay between updates, in milliseconds
-
 const unsigned long putInterval = 10 * 1000; // delay between updates, in milliseconds
 
 //Declare global variables
@@ -43,10 +41,8 @@ void setup()
   // start serial port:
   Serial.begin(9600);
 
-  while (!Serial)
-  {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
+  // Wait for serial to connect
+  delay(5000);
 
   Serial.println("Dallas Temperature IC Control Library");
   // Start up the library
@@ -136,16 +132,11 @@ double requestTemperature()
   Serial.print(temperature);
   Serial.println("");
   return temperature;
-  delay(1000);
 }
 
 void loop()
 {
-  // if ten seconds have passed since your last connection,
-  if (millis() - lastConnectionTime > getInterval)
-  {
-    httpRequest();
-  }
+  httpRequest();
 }
 
 void getThermostatInfo()
@@ -154,18 +145,20 @@ void getThermostatInfo()
   {
     Serial.println("GET REQUEST connecting...");
 
-    client.println("GET /v1/thermostat/ HTTP/1.1");
-    client.println("Host: http://smart-home-be.herokuapp.com");
-    client.println("User-Agent: arduino-ethernet");
-    client.println("Connection: close");
-    client.println("");
+    client.println("GET / HTTP/1.1");
+    client.println("Host: smart-home-be.herokuapp.com");
+    // client.println("User-Agent: arduino-ethernet");
+    // client.println("Accept: */*");
+    // client.println("Content-Type: multipart/form-data");
+    // client.println("Content-Length: 25");
+    client.println();
 
-    while (client.available())
-    {
+    while (client.connected() && !client.available())
+      delay(1);
+
+    while (client.connected() || client.available())
       readJson();
-    }
 
-    Serial.println();
     Serial.println("closing GET connection");
     client.stop();
   }
@@ -177,17 +170,18 @@ void putCurrentTemp(double tmp)
   {
     Serial.println("PUT REQUEST current temp " + String(tmp, 2));
 
-    client.println("PUT /v1/thermostat/current/" + String(tmp, 2) + "/ HTTP/1.1");
-    client.println("Host: http://smart-home-be.herokuapp.com");
-    client.println("Connection: close");
-    client.println("Content-Type: application/x-www-form-urlencoded");
-    client.println("Content-Length: 10\r\n");
-    client.print(String(tmp, 2));
+    client.println("PUT /current/" + String(tmp, 2) + " HTTP/1.1");
+    client.println("Host: smart-home-be.herokuapp.com");
+    client.println("Content-Type: multipart/form-data");
+    client.println("Content-Length: 25\r\n");
+    client.println("Accept: */*");
     client.println("");
-    delay(10);
 
     // Read all the lines of the reply from server and print them to Serial
-    while (client.available())
+    while (client.connected() && !client.available())
+      delay(1);
+
+    while (client.connected() || client.available())
     {
       String line = client.readStringUntil('\r');
       Serial.print(line);
@@ -202,11 +196,8 @@ void putCurrentTemp(double tmp)
 //CALL ALL HTTP REQUESTS METHODS
 void httpRequest()
 {
+  delay(500); //wait half second before next request
   getThermostatInfo();
-
-  delay(5000); //wait five seconds before next request
-
+  delay(500); //wait half second before next request
   putCurrentTemp(requestTemperature());
-
-  lastConnectionTime = millis();
 }
